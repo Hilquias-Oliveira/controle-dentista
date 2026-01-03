@@ -145,6 +145,40 @@ const AdminDashboard = () => {
         }
     };
 
+    const [siteConfig, setSiteConfig] = useState({ whatsapp: '' });
+
+    // Fetch Site Config
+    useEffect(() => {
+        if (!user) return;
+        const fetchConfig = async () => {
+            try {
+                const docRef = doc(db, "settings", "global");
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    setSiteConfig(docSnap.data());
+                } else {
+                    // Create default
+                    await setDoc(docRef, { whatsapp: '5547999999999' });
+                    setSiteConfig({ whatsapp: '5547999999999' });
+                }
+            } catch (error) {
+                console.error("Error fetching config:", error);
+            }
+        };
+        fetchConfig();
+    }, [user]);
+
+    const handleSaveConfig = async (e) => {
+        e.preventDefault();
+        try {
+            await setDoc(doc(db, "settings", "global"), siteConfig, { merge: true });
+            toast.success("Configurações salvas!");
+        } catch (error) {
+            console.error("Error saving config:", error);
+            toast.error("Erro ao salvar configurações.");
+        }
+    };
+
     const handleSort = (field) => {
         setSortConfig(prev => ({
             field,
@@ -448,11 +482,16 @@ const AdminDashboard = () => {
         handleDeleteRequest('user', user.id, 'Excluir Usuário', `Excluir usuário ${user.name}?`);
     };
 
+    const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+    // Triggered by the sidebar button
+    const handleLogout = () => {
+        setIsLogoutModalOpen(true);
+    };
+
     const confirmLogout = async () => {
-        if (confirm("Sair do sistema?")) {
-            await signOut(auth);
-            navigate("/");
-        }
+        await signOut(auth);
+        navigate("/");
     };
 
     // --- PROFILE MANAGEMENT STATE ---
@@ -1058,9 +1097,7 @@ const AdminDashboard = () => {
         setIsUnitModalOpen(true);
     };
 
-    const handleLogout = async () => {
-        confirmLogout();
-    };
+    // handleLogout is now defined above to toggle the modal
 
     const updateStatus = async (id, newStatus) => {
         try {
@@ -1194,10 +1231,14 @@ const AdminDashboard = () => {
                             { id: 'users', label: 'Usuários', icon: Users },
                             { id: 'units', label: 'Unidades', icon: MapPin },
                             { id: 'services', label: 'Serviços', icon: Sparkles },
+                            { id: 'settings', label: 'Configurações', icon: Settings },
                         ].map(tab => {
                             if (tab.id === 'users' && userProfile?.role === 'client') return null;
                             if (tab.id === 'units' && userProfile?.role === 'client') return null;
                             if (tab.id === 'services' && userProfile?.role === 'client') return null;
+
+                            // Only GM sees settings
+                            if (tab.id === 'settings' && userProfile?.role !== 'gm') return null;
 
                             const Icon = tab.icon;
                             const isActive = activeTab === tab.id;
@@ -1412,7 +1453,59 @@ const AdminDashboard = () => {
                                         Agenda Confirmada
                                     </h2>
 
-                                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                                    {/* MOBILE CARD VIEW (Visible only on small screens) */}
+                                    <div className="grid grid-cols-1 gap-4 md:hidden">
+                                        {confirmedAppointments.map(app => (
+                                            <div key={app.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 relative">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div>
+                                                        <span className="bg-teal-50 text-teal-800 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wide">
+                                                            {app.serviceName}
+                                                        </span>
+                                                        <h3 className="font-bold text-gray-900 text-lg mt-2">{app.clientName}</h3>
+                                                        <p className="text-sm text-gray-400">{app.clientCpf ? formatCPF(app.clientCpf) : 'CPF n/a'}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="text-teal-600 font-bold flex items-center justify-end gap-1">
+                                                            <Calendar size={14} />
+                                                            {(() => {
+                                                                if (!app.date) return '-';
+                                                                const [y, m, d] = app.date.split('-');
+                                                                return `${d}/${m}`;
+                                                            })()}
+                                                        </div>
+                                                        <div className="text-gray-500 font-mono text-sm">{app.time}</div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-2 text-sm text-gray-500 mb-4 bg-gray-50 p-2 rounded-lg">
+                                                    <MapPin size={14} className="text-teal-500" />
+                                                    {app.clinicName || 'Sem Unidade'}
+                                                </div>
+
+                                                <div className="border-t border-gray-100 pt-3 flex justify-between items-center">
+                                                    <a href={`https://wa.me/55${app.clientPhone}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-green-600 font-bold text-sm">
+                                                        <Phone size={14} /> {formatPhone(app.clientPhone)}
+                                                    </a>
+                                                    <div className="flex gap-2">
+                                                        {canEditClient && (
+                                                            <button onClick={() => handleEditClick(app)} className="p-2 bg-gray-100 text-gray-600 rounded-full">
+                                                                <Edit2 size={16} />
+                                                            </button>
+                                                        )}
+                                                        {canDelete && (
+                                                            <button onClick={() => handleDelete(app.id)} className="p-2 bg-red-50 text-red-600 rounded-full">
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* DESKTOP TABLE VIEW (Hidden on mobile) */}
+                                    <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-left">
                                                 <thead className="bg-gray-50 border-b border-gray-100 text-sm text-gray-500 uppercase tracking-wider">
@@ -1859,127 +1952,44 @@ const AdminDashboard = () => {
                                 </section>
                             )
                         }
-
-                        {/* --- SETTINGS TAB --- */}
-                        {
-                            ['gm', 'admin'].includes(userProfile?.role) && activeTab === 'settings' && (
-                                <section>
-                                    <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-3">
-                                        <span className="text-gray-600 bg-gray-100 p-2 rounded-lg"><Settings size={20} /></span>
-                                        Configurações da Clínica
-                                    </h2>
-
-                                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-                                        <form onSubmit={handleSaveSettings} className="space-y-6 max-w-2xl">
-                                            <div className="grid md:grid-cols-2 gap-6">
-                                                <div className="md:col-span-2">
-                                                    <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                                                        <MapPin size={16} className="text-teal-600" /> Endereço Completo
-                                                    </label>
-                                                    <input
-                                                        type="text"
-                                                        required
-                                                        value={clinicSettings.address}
-                                                        onChange={(e) => setClinicSettings(prev => ({ ...prev, address: e.target.value }))}
-                                                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 focus:border-teal-500 outline-none transition-colors"
-                                                        placeholder="Rua Exemplo, 123 - Centro"
-                                                    />
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                                                        <Phone size={16} className="text-teal-600" /> Telefone Fixo
-                                                    </label>
-                                                    <input
-                                                        type="tel"
-                                                        value={clinicSettings.phone}
-                                                        onChange={(e) => setClinicSettings(prev => ({ ...prev, phone: formatPhone(e.target.value) }))}
-                                                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 focus:border-teal-500 outline-none transition-colors"
-                                                        placeholder="(99) 9999-9999"
-                                                    />
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                                                        <Phone size={16} className="text-green-600" /> WhatsApp (Suporte)
-                                                    </label>
-                                                    <input
-                                                        type="tel"
-                                                        value={clinicSettings.whatsapp}
-                                                        onChange={(e) => setClinicSettings(prev => ({ ...prev, whatsapp: formatPhone(e.target.value) }))}
-                                                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 focus:border-teal-500 outline-none transition-colors"
-                                                        placeholder="(99) 99999-9999"
-                                                    />
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                                                        <Clock size={16} className="text-teal-600" /> Abertura
-                                                    </label>
-                                                    <input
-                                                        type="time"
-                                                        required
-                                                        value={clinicSettings.openingTime}
-                                                        onChange={(e) => setClinicSettings(prev => ({ ...prev, openingTime: e.target.value }))}
-                                                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 focus:border-teal-500 outline-none transition-colors"
-                                                    />
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                                                        <Clock size={16} className="text-teal-600" /> Fechamento
-                                                    </label>
-                                                    <input
-                                                        type="time"
-                                                        required
-                                                        value={clinicSettings.closingTime}
-                                                        onChange={(e) => setClinicSettings(prev => ({ ...prev, closingTime: e.target.value }))}
-                                                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 focus:border-teal-500 outline-none transition-colors"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <div className="pt-4">
-                                                <label className="block text-sm font-bold text-gray-700 mb-3">Dias de Funcionamento</label>
-                                                <div className="flex flex-wrap gap-3">
-                                                    {['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'].map(day => (
-                                                        <button
-                                                            key={day}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setClinicSettings(prev => {
-                                                                    const days = prev.workingDays.includes(day)
-                                                                        ? prev.workingDays.filter(d => d !== day)
-                                                                        : [...prev.workingDays, day];
-                                                                    return { ...prev, workingDays: days };
-                                                                })
-                                                            }}
-                                                            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${clinicSettings.workingDays.includes(day)
-                                                                ? 'bg-teal-600 text-white shadow-lg shadow-teal-200'
-                                                                : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                                                                }`}
-                                                        >
-                                                            {day.toUpperCase()}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="pt-6 border-t border-gray-100 flex justify-end">
-                                                <button
-                                                    type="submit"
-                                                    disabled={settingsLoading}
-                                                    className="bg-teal-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-teal-700 transition shadow-lg shadow-teal-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                                >
-                                                    {settingsLoading ? <Loader2 className="animate-spin" /> : 'Salvar Configurações'}
-                                                </button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </section>
-                            )
-                        }
                     </>
+                )}
+
+                {/* --- SETTINGS TAB --- */}
+                {activeTab === 'settings' && userProfile?.role === 'gm' && (
+                    <div className="animate-fade-in-up max-w-2xl mx-auto">
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+                            <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-3">
+                                <div className="bg-gray-100 p-2 rounded-lg text-gray-600"><Settings size={20} /></div>
+                                Configurações do Site
+                            </h2>
+
+                            <form onSubmit={handleSaveConfig} className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">WhatsApp do Botão Flutuante</label>
+                                    <p className="text-sm text-gray-500 mb-3">Este é o número que será aberto quando os visitantes clicarem no botão de WhatsApp do site.</p>
+                                    <div className="relative">
+                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                        <input
+                                            type="text"
+                                            value={siteConfig.whatsapp}
+                                            onChange={(e) => setSiteConfig({ ...siteConfig, whatsapp: e.target.value })}
+                                            className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all font-medium text-gray-700"
+                                            placeholder="Ex: 5547999999999"
+                                        />
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-2">Dica: Use 55 + DDD + Número (apenas números).</p>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-teal-200 flex items-center justify-center gap-2"
+                                >
+                                    <Check size={20} /> Salvar Configurações
+                                </button>
+                            </form>
+                        </div>
+                    </div>
                 )}
 
             </main >
@@ -2751,6 +2761,40 @@ const AdminDashboard = () => {
                 )
             }
 
+
+
+
+            {/* --- LOGOUT MODAL --- */}
+            {
+                isLogoutModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-[90] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-scale-in">
+                            <div className="mb-4 text-gray-900 flex justify-center">
+                                <div className="p-3 bg-red-50 rounded-full text-red-500">
+                                    <LogOut size={32} />
+                                </div>
+                            </div>
+                            <h2 className="text-xl font-bold text-gray-900 mb-2">Sair da conta?</h2>
+                            <p className="text-sm text-gray-500 mb-6">Você precisará fazer login novamente para acessar o painel administrativo.</p>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setIsLogoutModalOpen(false)}
+                                    className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-50 rounded-xl transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={confirmLogout}
+                                    className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors shadow-lg shadow-red-200"
+                                >
+                                    Sair
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
 
         </div >
     );
