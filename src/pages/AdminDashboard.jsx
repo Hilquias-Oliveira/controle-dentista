@@ -461,8 +461,9 @@ const AdminDashboard = () => {
                 // OPTIMISTIC UPDATE (Instant Feedback)
                 setUsersList(prev => prev.map(u => u.id === editingUser.id ? { ...u, name: userForm.name, phone: userForm.phone, role: userForm.role } : u));
 
-                // BACKGROUND SYNC
-                setUsersRefreshTrigger(prev => prev + 1);
+                // BACKGROUND SYNC REMOVED due to race condition. 
+                // We trust the optimistic update. Next natural refresh (filter/page/mount) will sync.
+                // setUsersRefreshTrigger(prev => prev + 1);
 
                 toast.success("Usuário atualizado!");
                 setIsUserModalOpen(false);
@@ -1275,8 +1276,8 @@ const AdminDashboard = () => {
                 setUsersList(prev => prev.filter(u => u.id !== deleteModal.id));
                 setUsersTotalItems(prev => prev - 1);
 
-                // BACKGROUND SYNC
-                setUsersRefreshTrigger(prev => prev + 1);
+                // BACKGROUND SYNC REMOVED
+                // setUsersRefreshTrigger(prev => prev + 1);
 
             } else if (deleteModal.type === 'unit') {
                 await deleteDoc(doc(db, "units", deleteModal.id));
