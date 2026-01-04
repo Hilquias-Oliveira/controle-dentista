@@ -5,6 +5,7 @@ import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, update
 import { auth, db } from '../firebase';
 import { UserPlus, Loader2, ArrowLeft, Shield, User, CheckCircle2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatCPF, formatPhone } from '../utils/formatters';
 
 const UserRegister = () => {
     const [formData, setFormData] = useState({
@@ -19,21 +20,7 @@ const UserRegister = () => {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
-    const formatPhone = (value) => {
-        const numbers = value.replace(/\D/g, '');
-        if (numbers.length <= 2) return numbers;
-        if (numbers.length <= 7) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
-        return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
-    };
 
-    const formatCPF = (value) => {
-        return value
-            .replace(/\D/g, '')
-            .replace(/(\d{3})(\d)/, '$1.$2')
-            .replace(/(\d{3})(\d)/, '$1.$2')
-            .replace(/(\d{3})(\d{1,2})/, '$1-$2')
-            .replace(/(-\d{2})\d+?$/, '$1');
-    };
 
     const [guestDocId, setGuestDocId] = useState(null);
 
