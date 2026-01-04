@@ -345,6 +345,7 @@ const AdminDashboard = () => {
     const [usersLastDocs, setUsersLastDocs] = useState([]);
     const [usersLoading, setUsersLoading] = useState(true);
     const [usersSearchTerm, setUsersSearchTerm] = useState('');
+    const [usersRefreshTrigger, setUsersRefreshTrigger] = useState(0); // For forcing re-fetch
 
     // Fetch Users (Staff Only) - Pagination & Search
     useEffect(() => {
@@ -399,7 +400,8 @@ const AdminDashboard = () => {
         };
 
         fetchUsers();
-    }, [userProfile, usersItemsPerPage, usersCurrentPage, usersSearchTerm]);
+        fetchUsers();
+    }, [userProfile, usersItemsPerPage, usersCurrentPage, usersSearchTerm, usersRefreshTrigger]);
 
     const handleUsersNextPage = () => {
         if (usersCurrentPage * usersItemsPerPage < usersTotalItems) {
@@ -455,6 +457,13 @@ const AdminDashboard = () => {
                     role: userForm.role
                     // Email/CPF usually not editable here or require auth admin SDK
                 });
+
+                // OPTIMISTIC UPDATE (Instant Feedback)
+                setUsersList(prev => prev.map(u => u.id === editingUser.id ? { ...u, name: userForm.name, phone: userForm.phone, role: userForm.role } : u));
+
+                // BACKGROUND SYNC
+                setUsersRefreshTrigger(prev => prev + 1);
+
                 toast.success("Usuário atualizado!");
                 setIsUserModalOpen(false);
                 setEditingUser(null);
@@ -999,6 +1008,13 @@ const AdminDashboard = () => {
             } else {
                 await addDoc(collection(db, "units"), unitForm);
                 toast.success("Unidade criada!");
+                // Refresh list or add nicely? For now, forced refresh or simple append if validation allows
+                // Ideally, fetching units again or adding to state:
+                // setUnitsList(prev => [...prev, { ...unitForm, id: "temp-" + Date.now() }]); 
+                // Since this is a less frequent action, and we want real IDs, maybe just trigger a re-fetch?
+                // For simplicity/safety on "Add", we might let the user refresh or implement a re-fetch.
+                // BUT for User Edit/Delete reported bug, we focus there.
+                // Let's at least update state for EDIT below.
             }
             setIsUnitModalOpen(false);
             setUnitForm({
@@ -1248,15 +1264,30 @@ const AdminDashboard = () => {
             if (deleteModal.type === 'appointment') {
                 await deleteDoc(doc(db, "appointments", deleteModal.id));
                 toast.success("Agendamento excluído.");
+                // Appointments usually handled by onSnapshot, but if using pending list:
+                setPendingAppointmentsList(prev => prev.filter(a => a.id !== deleteModal.id));
+
             } else if (deleteModal.type === 'user') {
                 await deleteDoc(doc(db, "users", deleteModal.id));
                 toast.success("Usuário excluído.");
+
+                // OPTIMISTIC UPDATE
+                setUsersList(prev => prev.filter(u => u.id !== deleteModal.id));
+                setUsersTotalItems(prev => prev - 1);
+
+                // BACKGROUND SYNC
+                setUsersRefreshTrigger(prev => prev + 1);
+
             } else if (deleteModal.type === 'unit') {
                 await deleteDoc(doc(db, "units", deleteModal.id));
                 toast.success("Unidade excluída.");
+                setUnitsList(prev => prev.filter(u => u.id !== deleteModal.id));
+
             } else if (deleteModal.type === 'service') {
                 await deleteDoc(doc(db, "services", deleteModal.id));
                 toast.success("Serviço excluído.");
+                setServicesList(prev => prev.filter(s => s.id !== deleteModal.id));
+                setServicesTotalItems(prev => prev - 1);
             }
             setDeleteModal({ isOpen: false, type: null, id: null, title: '', message: '' });
         } catch (error) {
