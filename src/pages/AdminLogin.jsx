@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
+import { signInWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebase';
 import { Lock, Loader2, ArrowLeft, Mail, Key } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,6 +22,12 @@ const AdminLogin = () => {
 
     const handleLogin = async (e) => {
         e.preventDefault();
+
+        if (password.length < 6 || password.length > 10) {
+            toast.error("A senha deve ter entre 6 e 10 dígitos.");
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -33,6 +39,20 @@ const AdminLogin = () => {
             toast.error("Email ou senha inválidos.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleResetPassword = async () => {
+        if (!email) {
+            toast.error("Digite seu email para recuperar a senha.");
+            return;
+        }
+        try {
+            await sendPasswordResetEmail(auth, email);
+            toast.success("Email de redefinição enviado! Verifique sua caixa de entrada.");
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao enviar email. Verifique se o endereço está correto.");
         }
     };
 
@@ -56,8 +76,8 @@ const AdminLogin = () => {
                             <Lock size={32} />
                         </div>
                     </div>
-                    <h1 className="text-2xl font-serif font-bold text-gray-800 tracking-tight">Painel Administrativo</h1>
-                    <p className="text-gray-500 text-sm mt-1">Gerencie sua clínica com excelência</p>
+                    <h1 className="text-2xl font-serif font-bold text-gray-800 tracking-tight">Área do Cliente</h1>
+                    <p className="text-gray-500 text-sm mt-1">Acesse sua conta com segurança</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-5">
@@ -91,9 +111,20 @@ const AdminLogin = () => {
                                 required
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                minLength={6}
+                                maxLength={10}
                                 className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 border-2 border-transparent focus:bg-white focus:border-teal-500 outline-none transition-all font-medium text-gray-700 placeholder-gray-400"
-                                placeholder="••••••••"
+                                placeholder="******"
                             />
+                        </div>
+                        <div className="flex justify-end pt-1">
+                            <button
+                                type="button"
+                                onClick={handleResetPassword}
+                                className="text-xs text-teal-600 hover:text-teal-800 font-bold hover:underline"
+                            >
+                                Esqueci minha senha
+                            </button>
                         </div>
                     </div>
 

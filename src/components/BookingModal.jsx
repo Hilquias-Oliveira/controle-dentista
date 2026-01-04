@@ -34,7 +34,7 @@ const validateCPF = (cpf) => {
 };
 
 // Dynamic Slot Generation Helper
-const generateTimeSlots = (date, clinic) => {
+const generateTimeSlots = (date, clinic, serviceDuration = 30, existingAppointments = []) => {
     if (!date || !clinic?.schedule?.weekly) return [];
 
     const dateStr = format(date, 'yyyy-MM-dd');
@@ -69,6 +69,17 @@ const generateTimeSlots = (date, clinic) => {
         }
     }
 
+    // 3. Calculate Occupied Ranges (Only Approved)
+    const busyRanges = existingAppointments
+        .filter(app => app.status === 'approved' && app.clinicId === clinic.id && app.date === dateStr)
+        .map(app => {
+            const startParts = app.time.split(':').map(Number);
+            const startMins = startParts[0] * 60 + startParts[1];
+            // If appointment has no duration saved, assume 30 mins default
+            const duration = app.duration || 30;
+            return { start: startMins, end: startMins + duration };
+        });
+
     // Generate Slots
     const slots = [];
     const now = new Date();
@@ -84,27 +95,47 @@ const generateTimeSlots = (date, clinic) => {
         const [endHour, endMin] = range.end.split(':').map(Number);
         const endTotalMins = endHour * 60 + endMin;
 
+        // Step 10 minutes for finer granularity if duration is small, or keep 10 mins as base unit
+        // Using 10 mins step to allow flexible start times (10:00, 10:10, 10:20...)
+        const stepMins = 10;
+
         while (currHour * 60 + currMin < endTotalMins) {
-            // Check Past Time
+            const currentTotalMins = currHour * 60 + currMin;
+            const proposedEndMins = currentTotalMins + serviceDuration;
+
+            // 1. Check Schedule Boundaries (Must finish before closing)
+            if (proposedEndMins > endTotalMins) {
+                // Advance
+                currMin += stepMins;
+                if (currMin >= 60) { currMin -= 60; currHour += 1; }
+                continue;
+            }
+
+            // 2. Check Past Time
             if (isToday) {
                 const slotTime = new Date(date);
                 slotTime.setHours(currHour, currMin, 0, 0);
                 if (slotTime < now) {
-                    // Skip past time
-                    currMin += 30;
-                    if (currMin >= 60) {
-                        currMin -= 60;
-                        currHour += 1;
-                    }
+                    currMin += stepMins;
+                    if (currMin >= 60) { currMin -= 60; currHour += 1; }
                     continue;
                 }
             }
 
-            const timeStr = `${String(currHour).padStart(2, '0')}:${String(currMin).padStart(2, '0')}`;
-            slots.push(timeStr);
+            // 3. Check Conflicts with Approved Appointments
+            const isBlocked = busyRanges.some(busy => {
+                // Formatting overlap: [Start, End)
+                // Overlap if (StartA < EndB) and (EndA > StartB)
+                return (currentTotalMins < busy.end) && (proposedEndMins > busy.start);
+            });
 
-            // Increment 30 mins
-            currMin += 30;
+            if (!isBlocked) {
+                const timeStr = `${String(currHour).padStart(2, '0')}:${String(currMin).padStart(2, '0')}`;
+                slots.push(timeStr);
+            }
+
+            // Increment
+            currMin += stepMins;
             if (currMin >= 60) {
                 currMin -= 60;
                 currHour += 1;
@@ -112,7 +143,7 @@ const generateTimeSlots = (date, clinic) => {
         }
     });
 
-    return slots.sort();
+    return [...new Set(slots)].sort(); // Dedupe just in case
 };
 
 const BookingModal = ({ service, onClose }) => {
@@ -123,6 +154,8 @@ const BookingModal = ({ service, onClose }) => {
     const [selectedDate, setSelectedDate] = useState(undefined);
     const [selectedTime, setSelectedTime] = useState(null);
     const [availableSlots, setAvailableSlots] = useState([]);
+    const [existingAppointments, setExistingAppointments] = useState([]);
+    const [loadingSlots, setLoadingSlots] = useState(false);
     const [loading, setLoading] = useState(false);
     const [servicesList, setServicesList] = useState([]); // For Step 0
     const [loadingServices, setLoadingServices] = useState(false);
@@ -190,14 +223,42 @@ const BookingModal = ({ service, onClose }) => {
         return selectedService.allowedUnits.includes(unit.id);
     });
 
+    // Fetch Appointments for Selected Date to Check Conflicts
+    useEffect(() => {
+        const fetchAppointments = async () => {
+            if (!selectedClinic || !selectedDate) return;
+
+            setLoadingSlots(true);
+            try {
+                const dateStr = format(selectedDate, 'yyyy-MM-dd');
+                // Only fetching APPROVED because pending ones don't block
+                const q = query(
+                    collection(db, "appointments"),
+                    where("clinicId", "==", selectedClinic.id),
+                    where("date", "==", dateStr),
+                    where("status", "==", "approved")
+                );
+                const snapshot = await getDocs(q);
+                const apps = snapshot.docs.map(doc => doc.data());
+                setExistingAppointments(apps);
+            } catch (error) {
+                console.error("Error fetching slots:", error);
+            } finally {
+                setLoadingSlots(false);
+            }
+        };
+        fetchAppointments();
+    }, [selectedClinic, selectedDate]);
+
     // Slots Generation
     useEffect(() => {
-        if (selectedClinic && selectedDate) {
-            const slots = generateTimeSlots(selectedDate, selectedClinic);
+        if (selectedClinic && selectedDate && !loadingSlots) {
+            const serviceDuration = selectedService?.duration || 30;
+            const slots = generateTimeSlots(selectedDate, selectedClinic, serviceDuration, existingAppointments);
             setAvailableSlots(slots);
             setSelectedTime(null);
         }
-    }, [selectedClinic, selectedDate]);
+    }, [selectedClinic, selectedDate, existingAppointments, loadingSlots, selectedService]);
 
     // --- ICONS ---
     const ToothIcon = ({ className }) => (
@@ -353,6 +414,8 @@ const BookingModal = ({ service, onClose }) => {
                     serviceName: selectedService.name || selectedService.title,
                     date: format(selectedDate, 'yyyy-MM-dd'),
                     time: selectedTime,
+                    time: selectedTime,
+                    duration: selectedService.duration || 30, // Save duration!
                     status: 'pending_approval',
                     createdAt: serverTimestamp()
                 });

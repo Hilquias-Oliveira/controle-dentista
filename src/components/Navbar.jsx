@@ -91,7 +91,7 @@ const Navbar = ({ onOpenBooking }) => {
                     <div className="md:hidden absolute top-full left-0 w-full bg-white shadow-lg border-t border-gray-100 py-4 px-6 flex flex-col space-y-4 animate-fade-in-down">
                         <a href="#services" className="text-gray-600 hover:text-teal-600 py-2">Tratamentos</a>
                         <a href="#about" className="text-gray-600 hover:text-teal-600 py-2">Sobre</a>
-                        <a href="#testimonials" className="text-gray-600 hover:text-teal-600 py-2">Depoimentos</a>
+
                         <a href="#contact" className="text-gray-600 hover:text-teal-600 py-2">Contato</a>
 
                         {user ? (

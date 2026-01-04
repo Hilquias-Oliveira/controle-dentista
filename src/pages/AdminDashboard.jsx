@@ -3,7 +3,7 @@ import { signOut, onAuthStateChanged, sendPasswordResetEmail } from 'firebase/au
 import { useNavigate, Link } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDoc, where, setDoc, addDoc, limit, startAfter, getCountFromServer, startAt, endAt, endBefore, limitToLast, getDocs } from 'firebase/firestore';
-import { LogOut, Check, X, Calendar, Clock, User, Phone, Trash2, Home as HomeIcon, Shield, Edit2, ShieldAlert, Ban, Loader2, Users, Settings, MapPin, Sparkles, ChevronLeft, ChevronRight, Filter, Search, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { LogOut, Check, X, Calendar, Clock, User, Phone, Trash2, Home as HomeIcon, Shield, Edit2, ShieldAlert, Ban, Loader2, Users, Settings, MapPin, Sparkles, ChevronLeft, ChevronRight, Filter, Search, ChevronUp, ChevronDown, ArrowUpDown, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 const formatPhone = (value) => {
@@ -955,6 +955,7 @@ const AdminDashboard = () => {
             const payload = {
                 name: serviceForm.name,
                 price: parseFloat(serviceForm.price) || 0,
+                duration: parseInt(serviceForm.duration) || 30, // Default 30 min
                 displayPrice: serviceForm.displayPrice,
                 description: serviceForm.description || '',
                 allowedUnits: serviceForm.allowedUnits || []
@@ -985,13 +986,14 @@ const AdminDashboard = () => {
             setServiceForm({
                 name: service.name,
                 price: service.price,
+                duration: service.duration || 30,
                 displayPrice: service.displayPrice !== false, // Default true
                 description: service.description || '',
                 allowedUnits: service.allowedUnits || [] // Load existing or empty
             });
             setEditingServiceId(service.id);
         } else {
-            setServiceForm({ name: '', price: '', displayPrice: true, description: '', allowedUnits: [] });
+            setServiceForm({ name: '', price: '', duration: 30, displayPrice: true, description: '', allowedUnits: [] });
             setEditingServiceId(null);
         }
         setIsServiceModalOpen(true);
@@ -1099,8 +1101,130 @@ const AdminDashboard = () => {
 
     // handleLogout is now defined above to toggle the modal
 
+    // --- CONFLICT MODAL STATE ---
+    const [conflictModal, setConflictModal] = useState({
+        isOpen: false,
+        targetApp: null,
+        conflictingApp: null,
+        suggestion: null
+    });
+
+    const findNextAvailableSlot = (targetApp, conflictingApp) => {
+        // Find unit schedule
+        const unit = unitsList.find(u => u.id === targetApp.clinicId);
+        if (!unit) return null;
+
+        // Parse date
+        // targetApp.date is YYYY-MM-DD
+        // We need a Date object to check day of week
+        const dateParts = targetApp.date.split('-').map(Number);
+        const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+
+        // Get busy ranges for that day (approved only)
+        const busyRanges = appointments
+            .filter(app =>
+                app.status === 'approved' &&
+                app.clinicId === targetApp.clinicId &&
+                app.date === targetApp.date
+            )
+            .map(app => {
+                const s = app.time.split(':').map(Number);
+                const sMins = s[0] * 60 + s[1];
+                return { start: sMins, end: sMins + (app.duration || 30) };
+            });
+
+        // Get Schedule Ranges
+        // Reuse logic from generateTimeSlots roughly... or just iterate 10 mins from conflict end
+        // Simplification: Check every 10 mins starting from Conflicting App End Time
+
+        const conflictEndParts = conflictingApp.time.split(':').map(Number);
+        const startCheckMins = conflictEndParts[0] * 60 + conflictEndParts[1];
+        const dayEndMins = 18 * 60; // Assume 18:00 limit for safety or check unit closing
+
+        // Simple iteration
+        for (let time = startCheckMins; time < dayEndMins; time += 10) {
+            const proposedEnd = time + (targetApp.duration || 30);
+
+            // Check if this slot overlaps with ANY busy range
+            const isBlocked = busyRanges.some(busy => {
+                return (time < busy.end) && (proposedEnd > busy.start);
+            });
+
+            if (!isBlocked) {
+                // Return formatted time
+                const h = Math.floor(time / 60);
+                const m = time % 60;
+                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            }
+        }
+        return null;
+    };
+
+    const handleResolveConflict = async (action) => {
+        if (!conflictModal.targetApp) return;
+
+        const { targetApp, suggestion } = conflictModal;
+
+        try {
+            if (action === 'force') {
+                await updateDoc(doc(db, "appointments", targetApp.id), { status: 'approved' });
+                toast.success("Agendamento aprovado forçadamente.");
+            } else if (action === 'suggest' && suggestion) {
+                await updateDoc(doc(db, "appointments", targetApp.id), {
+                    status: 'approved',
+                    time: suggestion
+                });
+                toast.success(`Agendamento movido para ${suggestion} e aprovado!`);
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao resolver conflito.");
+        } finally {
+            setConflictModal({ isOpen: false, targetApp: null, conflictingApp: null, suggestion: null });
+        }
+    };
+
     const updateStatus = async (id, newStatus) => {
         try {
+            // CONFLICT CHECK FOR APPROVAL
+            if (newStatus === 'approved') {
+                // 1. Get the appointment to be approved
+                const targetApp = appointments.find(a => a.id === id) || pendingAppointmentsList.find(a => a.id === id);
+                if (targetApp) {
+                    const appDuration = targetApp.duration || 30;
+                    const startParts = targetApp.time.split(':').map(Number);
+                    const startMins = startParts[0] * 60 + startParts[1];
+                    const endMins = startMins + appDuration;
+
+                    // 2. Check against other APPROVED appointments
+                    const conflicting = appointments.find(app => {
+                        if (app.id === id) return false; // Skip self
+                        if (app.status !== 'approved') return false;
+                        if (app.clinicId !== targetApp.clinicId) return false;
+                        if (app.date !== targetApp.date) return false;
+
+                        const aStart = app.time.split(':').map(Number);
+                        const aStartMins = aStart[0] * 60 + aStart[1];
+                        const aEndMins = aStartMins + (app.duration || 30);
+
+                        // Overlap Check: StartA < EndB && EndA > StartB
+                        return startMins < aEndMins && endMins > aStartMins;
+                    });
+
+                    if (conflicting) {
+                        // Found Conflict!
+                        const suggestion = findNextAvailableSlot(targetApp, conflicting);
+                        setConflictModal({
+                            isOpen: true,
+                            targetApp,
+                            conflictingApp: conflicting,
+                            suggestion
+                        });
+                        return; // ABORT STANDARD UPDATE
+                    }
+                }
+            }
+
             await updateDoc(doc(db, "appointments", id), {
                 status: newStatus
             });
@@ -1394,11 +1518,29 @@ const AdminDashboard = () => {
                                                     <div className="flex items-center gap-2 text-gray-500 text-sm mt-1">
                                                         <Phone size={14} />
                                                         {app.clientPhone}
-                                                        {canEditClient && (
-                                                            <button className="text-teal-600 hover:text-teal-800 ml-2" title="Editar Contato">
-                                                                <Edit2 size={12} />
-                                                            </button>
-                                                        )}
+                                                        <div className="ml-auto flex gap-2">
+                                                            <a
+                                                                href={`https://wa.me/55${app.clientPhone?.replace(/\D/g, '')}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-green-600 hover:text-green-800"
+                                                                title="WhatsApp"
+                                                            >
+                                                                <MessageCircle size={16} />
+                                                            </a>
+                                                            {canEditClient && (
+                                                                <button
+                                                                    onClick={() => handleEditClick(app)}
+                                                                    className="text-blue-600 hover:text-blue-800"
+                                                                    title="Editar Agendamento"
+                                                                >
+                                                                    <Edit2 size={16} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-2 text-xs font-bold text-gray-500 bg-gray-50 px-2 py-1 rounded inline-block">
+                                                        {app.clinicName || 'Unidade não identificada'}
                                                     </div>
                                                 </div>
 
@@ -1561,13 +1703,24 @@ const AdminDashboard = () => {
                                                             <td className="px-6 py-4 text-right">
                                                                 <div className="flex items-center justify-end gap-2">
                                                                     {canEditClient && (
-                                                                        <button
-                                                                            onClick={() => handleEditClick(app)}
-                                                                            className="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                                                                            title="Editar"
-                                                                        >
-                                                                            <Edit2 size={16} />
-                                                                        </button>
+                                                                        <>
+                                                                            <a
+                                                                                href={`https://wa.me/55${app.clientPhone?.replace(/\D/g, '')}`}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                                                title="WhatsApp"
+                                                                            >
+                                                                                <MessageCircle size={16} />
+                                                                            </a>
+                                                                            <button
+                                                                                onClick={() => handleEditClick(app)}
+                                                                                className="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                                                                title="Editar"
+                                                                            >
+                                                                                <Edit2 size={16} />
+                                                                            </button>
+                                                                        </>
                                                                     )}
                                                                     {canDelete ? (
                                                                         <button onClick={() => handleDelete(app.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Excluir">
@@ -2572,6 +2725,19 @@ const AdminDashboard = () => {
                                         placeholder="0,00"
                                     />
                                 </div>
+
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Duração (minutos)</label>
+                                    <select
+                                        value={serviceForm.duration || 30}
+                                        onChange={e => setServiceForm(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
+                                        className="w-full px-4 py-2 rounded-xl border-2 border-gray-100 focus:border-purple-500 outline-none bg-white transition-colors"
+                                    >
+                                        {[10, 20, 30, 40, 50, 60, 90, 120].map(min => (
+                                            <option key={min} value={min}>{min} min</option>
+                                        ))}
+                                    </select>
+                                </div>
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Descrição</label>
                                     <textarea
@@ -2644,7 +2810,7 @@ const AdminDashboard = () => {
                                 </div>
                             </form>
                         </div>
-                    </div>
+                    </div >
                 )
             }
 
@@ -2795,6 +2961,76 @@ const AdminDashboard = () => {
                     </div>
                 )
             }
+
+            {/* --- CONFLICT RESOLUTION MODAL --- */}
+            {
+                conflictModal.isOpen && (
+                    <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                            <div className="bg-amber-100 p-6 flex flex-col items-center text-center border-b border-amber-200">
+                                <div className="p-3 bg-amber-500 text-white rounded-full mb-3 shadow-lg shadow-amber-200/50">
+                                    <Clock size={32} />
+                                </div>
+                                <h3 className="text-xl font-bold text-amber-900">Conflito de Horário!</h3>
+                                <p className="text-amber-800 mt-2 text-sm leading-relaxed">
+                                    O horário <span className="font-bold">{conflictModal.targetApp?.time}</span> já está ocupado por <br />
+                                    <strong>{conflictModal.conflictingApp?.clientName}</strong> ({conflictModal.conflictingApp?.time}).
+                                </p>
+                            </div>
+
+                            <div className="p-6 space-y-4">
+                                {conflictModal.suggestion ? (
+                                    <div className="bg-green-50 p-4 rounded-xl border border-green-100 flex items-center justify-between">
+                                        <div>
+                                            <p className="text-xs font-bold text-green-600 uppercase tracking-widest mb-1">Sugestão</p>
+                                            <p className="text-lg font-bold text-green-900 flex items-center gap-2">
+                                                <Clock size={18} /> {conflictModal.suggestion}
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => handleResolveConflict('suggest')}
+                                            className="px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition-colors shadow-lg shadow-green-200"
+                                        >
+                                            Aceitar
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-center text-gray-500 text-sm">
+                                        Não encontramos horários livres próximos.
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-3 pt-2">
+                                    <button
+                                        onClick={() => setConflictModal(prev => ({ ...prev, isOpen: false }))}
+                                        className="py-3 border-2 border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        onClick={() => handleResolveConflict('force')}
+                                        className="py-3 bg-red-100 text-red-600 font-bold rounded-xl hover:bg-red-200 transition-colors"
+                                    >
+                                        Aprovar Mesmo Assim
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setConflictModal(prev => ({ ...prev, isOpen: false }));
+                                            handleEditClick(conflictModal.targetApp);
+                                        }}
+                                        className="col-span-2 py-3 bg-blue-50 text-blue-600 font-bold rounded-xl hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <Edit2 size={16} /> Editar Horário Manualmente
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+
+
 
         </div >
     );

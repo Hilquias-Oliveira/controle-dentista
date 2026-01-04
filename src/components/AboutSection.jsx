@@ -37,13 +37,16 @@ const AboutSection = () => {
                         <h2 className="text-4xl md:text-5xl font-serif font-bold text-gray-900 leading-tight">
                             Dr. Wellington Oliveira
                         </h2>
+                        <h3 className="text-xl md:text-2xl text-teal-600 font-medium">
+                            Cirurgião-Dentista | CRO/SC 23642
+                        </h3>
 
                         <div className="space-y-4 text-lg text-gray-600 leading-relaxed">
                             <p>
-                                Atuando desde 2025 na clínica <strong>Sorriso do Bem</strong>, o Dr. Wellington se dedica a transformar sorrisos e autoestimas com excelência técnica e cuidado humanizado.
+                                O Dr. Wellington Oliveira é cirurgião-dentista com ampla experiência em diagnóstico oral, cirurgia oral menor, implantodontia, reabilitação protética e tratamentos restauradores. Atua também em procedimentos estéticos, como toxina botulínica, facetas em resina e ozonioterapia, oferecendo soluções modernas e personalizadas que integram saúde bucal, estética e qualidade de vida.
                             </p>
                             <p>
-                                Graduado em <strong>Odontologia</strong>, possui especialização como Cirurgião Bucomaxilofacial e atualmente é pós-graduando em Ortodontia e Implantodontia pelo IPPEO/PR.
+                                Atualmente é residente em Cirurgia e Traumatologia Bucomaxilofacial, o que o capacita para atuar em procedimentos de maior complexidade, sempre com segurança, ética e excelência técnica.
                             </p>
                         </div>
 
