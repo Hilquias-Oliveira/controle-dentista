@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper to check for specific roles (requires Custom Claims or User Document lookup)
+    // For this app, we rely on checking the user document for role 'gm' or 'admin'
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (getUserData().role == 'admin' || getUserData().role == 'gm');
+    }
+
+    match /users/{userId} {
+      // Users can read/write their own profile
+      allow read, update: if request.auth.uid == userId;
+      // Admins can read all users
+      allow read: if isAdmin();
+      // Only admins/system can create/delete users (or via Admin SDK)
+      // But for registration, we allow creation if auth.uid matches
+      allow create: if request.auth.uid == userId;
+    }
+    
+    match /appointments/{appointmentId} {
+      // Clients can read/create their own appointments
+      allow read: if isAuthenticated() && resource.data.customerId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.customerId == request.auth.uid;
+      // Clients can update their own appointments (cancellation?) - Restriction needed potentially
+      // Admins have full access
+      allow read, write: if isAdmin();
+    }
+    
+    match /services/{serviceId} {
+      allow read: if true; // Public can see services
+      allow write: if isAdmin();
+    }
+    
+    match /units/{unitId} {
+      allow read: if true; // Public can see units
+      allow write: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

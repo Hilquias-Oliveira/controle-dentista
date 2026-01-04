@@ -1,4 +1,4 @@
-export const validateCPF = (cpf) => {
+export const validateCPF = (cpf: string | undefined | null): boolean => {
     if (!cpf) return false;
     const strCPF = String(cpf).replace(/[^\d]/g, '');
     if (strCPF.length !== 11) return false;

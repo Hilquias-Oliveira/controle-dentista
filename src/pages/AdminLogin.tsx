@@ -5,7 +5,7 @@ import { auth } from '../firebase';
 import { Lock, Loader2, ArrowLeft, Mail, Key } from 'lucide-react';
 import { toast } from 'sonner';
 
-const AdminLogin = () => {
+const AdminLogin: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -20,7 +20,7 @@ const AdminLogin = () => {
         return () => unsubscribe();
     }, [navigate]);
 
-    const handleLogin = async (e) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
 
         if (password.length < 6 || password.length > 10) {
@@ -66,9 +66,11 @@ const AdminLogin = () => {
                             alt="Logo"
                             className="h-20 w-auto object-contain drop-shadow-md"
                             onError={(e) => {
-                                e.target.onerror = null;
-                                e.target.style.display = 'none';
-                                e.target.nextSibling.style.display = 'flex';
+                                const target = e.target as HTMLImageElement;
+                                target.onerror = null;
+                                target.style.display = 'none';
+                                const sibling = target.nextSibling as HTMLElement;
+                                if (sibling) sibling.style.display = 'flex';
                             }}
                         />
                         {/* Fallback Icon if logo fails */}

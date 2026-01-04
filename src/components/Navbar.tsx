@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { auth } from '../firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { LogOut, LayoutDashboard, Calendar, Menu, X } from 'lucide-react';
 
-const Navbar = ({ onOpenBooking }) => {
+interface NavbarProps {
+    onOpenBooking: () => void;
+}
+
+const Navbar: React.FC<NavbarProps> = ({ onOpenBooking }) => {
     const [isScrolled, setIsScrolled] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const [user, setUser] = useState(null);
+    const [user, setUser] = useState<User | null>(null);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
     useEffect(() => {
@@ -27,7 +31,7 @@ const Navbar = ({ onOpenBooking }) => {
         };
     }, []);
 
-    const handleLogoutClick = (e) => {
+    const handleLogoutClick = (e: React.MouseEvent) => {
         e.preventDefault();
         setShowLogoutConfirm(true);
     };

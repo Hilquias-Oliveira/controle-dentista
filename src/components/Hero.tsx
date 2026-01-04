@@ -1,7 +1,11 @@
 import React from 'react';
 import { ArrowRight, Star } from 'lucide-react';
 
-const Hero = ({ onOpenBooking }) => {
+interface HeroProps {
+    onOpenBooking: () => void;
+}
+
+const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
     return (
         <section className="relative min-h-screen flex items-center pt-20 overflow-hidden bg-white">
             {/* Full Width Background Image with Overlay for Mobile/Tablet or Split for Desktop */}

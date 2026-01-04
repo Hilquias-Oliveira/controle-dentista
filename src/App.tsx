@@ -1,12 +1,12 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import Home from './pages/Home';
-import AdminLogin from './pages/AdminLogin';
-import UserRegister from './pages/UserRegister';
-import AdminDashboard from './pages/AdminDashboard';
+import Home from './pages/Home.tsx';
+import AdminLogin from './pages/AdminLogin.tsx';
+import UserRegister from './pages/UserRegister.tsx';
+import AdminDashboard from './pages/AdminDashboard.tsx';
 
-function App() {
+const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>

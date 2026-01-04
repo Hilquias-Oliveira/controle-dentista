@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
-import Navbar from '../components/Navbar';
-import Hero from '../components/Hero';
-import ServicesSection from '../components/ServicesSection';
-import AboutSection from '../components/AboutSection';
-import ContactSection from '../components/ContactSection';
+import Navbar from '../components/Navbar.tsx';
+import Hero from '../components/Hero'; // Hero was already TSX, check import in Hero is fine.
+import ServicesSection from '../components/ServicesSection.tsx';
+import AboutSection from '../components/AboutSection.tsx';
+import ContactSection from '../components/ContactSection.tsx';
 import FloatingWhatsApp from '../components/FloatingWhatsApp';
 import BookingModal from '../components/BookingModal';
+import { ServiceForModal } from '../types';
 
-const Home = () => {
-    const [selectedService, setSelectedService] = useState(null);
+const Home: React.FC = () => {
+    const [selectedService, setSelectedService] = useState<ServiceForModal | null>(null);
     const [isBookingOpen, setIsBookingOpen] = useState(false);
 
-    const handleOpenBooking = (service = null) => {
+    const handleOpenBooking = (service: ServiceForModal | null = null) => {
         setSelectedService(service);
         setIsBookingOpen(true);
     };
@@ -31,8 +32,8 @@ const Home = () => {
             {/* Booking Modal */}
             {isBookingOpen && (
                 <BookingModal
-                    service={selectedService}
                     onClose={() => setIsBookingOpen(false)}
+                    service={selectedService}
                 />
             )}
 

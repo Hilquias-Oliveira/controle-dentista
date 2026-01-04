@@ -1,7 +1,7 @@
 import React from 'react';
 import { Instagram, GraduationCap, Clock, Award } from 'lucide-react';
 
-const AboutSection = () => {
+const AboutSection: React.FC = () => {
     return (
         <section id="about" className="py-24 bg-gray-50 overflow-hidden relative">
             <div className="container mx-auto px-6">

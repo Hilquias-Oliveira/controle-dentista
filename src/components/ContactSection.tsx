@@ -2,17 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, Phone, MessageCircle } from 'lucide-react';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+import { Unit } from '../types';
 
-const ContactSection = () => {
-    const [clinics, setClinics] = useState([]);
+const ContactSection: React.FC = () => {
+    const [clinics, setClinics] = useState<Unit[]>([]);
 
     useEffect(() => {
         const q = query(collection(db, "units"), orderBy("name"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const units = snapshot.docs.map(doc => doc.data());
-            // Fallback if empty (optional, but good for initial load if no data seeded yet)
+            const units = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Unit[];
             if (units.length === 0) {
-                // You can leave empty or show default. For now, let's leave empty and let the Admin seed it.
                 setClinics([]);
             } else {
                 setClinics(units);
@@ -21,7 +20,7 @@ const ContactSection = () => {
         return () => unsubscribe();
     }, []);
 
-    const openMaps = (address) => {
+    const openMaps = (address: string) => {
         const encoded = encodeURIComponent(address);
         window.open(`https://www.google.com/maps/dir/?api=1&destination=${encoded}`, '_blank');
     };

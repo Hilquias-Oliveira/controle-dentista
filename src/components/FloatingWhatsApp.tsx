@@ -3,7 +3,7 @@ import { MessageCircle } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const FloatingWhatsApp = () => {
+const FloatingWhatsApp: React.FC = () => {
     const [whatsappNumber, setWhatsappNumber] = useState('5547999999999'); // Default backup
 
     useEffect(() => {

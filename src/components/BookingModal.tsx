@@ -1,23 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar as CalendarIcon, Clock, User, CheckCircle, ChevronLeft, ChevronRight, Loader2, MapPin } from 'lucide-react';
+import { X, Calendar as CalendarIcon, Clock, CheckCircle, ChevronRight, Loader2, MapPin } from 'lucide-react';
 import { DayPicker } from 'react-day-picker';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, orderBy, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { toast } from 'sonner';
-import { formatCPF, formatPhone } from '../utils/formatters';
 import { validateCPF } from '../utils/validators';
+import { Service, ServiceForModal, Unit, Appointment, UserProfile } from '../types';
 import './Calendar.css';
 
-
-
 // Dynamic Slot Generation Helper
-const generateTimeSlots = (date, clinic, serviceDuration = 30, existingAppointments = []) => {
+const generateTimeSlots = (
+    date: Date | undefined,
+    clinic: Unit | null,
+    serviceDuration: number = 30,
+    existingAppointments: Appointment[] = []
+): string[] => {
     if (!date || !clinic?.schedule?.weekly) return [];
 
     const dateStr = format(date, 'yyyy-MM-dd');
-    let rangesToUse = [];
+    let rangesToUse: { start: string; end: string }[] = [];
 
     // 1. Check Exceptions first
     const exception = clinic.schedule.exceptions?.find(ex => {
@@ -26,9 +29,11 @@ const generateTimeSlots = (date, clinic, serviceDuration = 30, existingAppointme
     });
 
     if (exception) {
-        if (typeof exception === 'string' || exception.type === 'closed') {
+        if (typeof exception === 'string') {
             return []; // Closed
         }
+        // Handle object exception
+        if (exception.type === 'closed') return [];
         if (exception.type === 'custom' && exception.ranges) {
             rangesToUse = exception.ranges;
         }
@@ -60,7 +65,7 @@ const generateTimeSlots = (date, clinic, serviceDuration = 30, existingAppointme
         });
 
     // Generate Slots
-    const slots = [];
+    const slots: string[] = [];
     const now = new Date();
     // Check if selected date is Same Day as Today
     const isToday = date.getDate() === now.getDate() &&
@@ -125,18 +130,23 @@ const generateTimeSlots = (date, clinic, serviceDuration = 30, existingAppointme
     return [...new Set(slots)].sort(); // Dedupe just in case
 };
 
-const BookingModal = ({ service, onClose }) => {
-    const [selectedService, setSelectedService] = useState(service || null);
+interface BookingModalProps {
+    service: ServiceForModal | null;
+    onClose: () => void;
+}
+
+const BookingModal: React.FC<BookingModalProps> = ({ service, onClose }) => {
+    const [selectedService, setSelectedService] = useState<ServiceForModal | Service | null>(service || null);
     const [step, setStep] = useState(service ? 1 : 0);
-    const [units, setUnits] = useState([]);
-    const [selectedClinic, setSelectedClinic] = useState(null);
-    const [selectedDate, setSelectedDate] = useState(undefined);
-    const [selectedTime, setSelectedTime] = useState(null);
-    const [availableSlots, setAvailableSlots] = useState([]);
-    const [existingAppointments, setExistingAppointments] = useState([]);
+    const [units, setUnits] = useState<Unit[]>([]);
+    const [selectedClinic, setSelectedClinic] = useState<Unit | null>(null);
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+    const [selectedTime, setSelectedTime] = useState<string | null>(null);
+    const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+    const [existingAppointments, setExistingAppointments] = useState<Appointment[]>([]);
     const [loadingSlots, setLoadingSlots] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [servicesList, setServicesList] = useState([]); // For Step 0
+    const [servicesList, setServicesList] = useState<Service[]>([]); // For Step 0
     const [loadingServices, setLoadingServices] = useState(false);
 
     // Form State
@@ -163,7 +173,7 @@ const BookingModal = ({ service, onClose }) => {
                 try {
                     const q = query(collection(db, "services"), orderBy("name"));
                     const snapshot = await getDocs(q);
-                    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Service[];
                     setServicesList(list);
                 } catch (error) {
                     console.error("Error fetching services:", error);
@@ -181,7 +191,7 @@ const BookingModal = ({ service, onClose }) => {
             try {
                 const q = query(collection(db, "units"), orderBy("name"));
                 const snapshot = await getDocs(q);
-                const loadedUnits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const loadedUnits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Unit[];
                 setUnits(loadedUnits);
             } catch (error) {
                 console.error("Error fetching units:", error);
@@ -218,7 +228,7 @@ const BookingModal = ({ service, onClose }) => {
                     where("status", "==", "approved")
                 );
                 const snapshot = await getDocs(q);
-                const apps = snapshot.docs.map(doc => doc.data());
+                const apps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Appointment[];
                 setExistingAppointments(apps);
             } catch (error) {
                 console.error("Error fetching slots:", error);
@@ -240,7 +250,7 @@ const BookingModal = ({ service, onClose }) => {
     }, [selectedClinic, selectedDate, existingAppointments, loadingSlots, selectedService]);
 
     // --- ICONS ---
-    const ToothIcon = ({ className }) => (
+    const ToothIcon = ({ className }: { className?: string }) => (
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
             <path d="M12 5.5c-2.5 0-4 1.5-5.5 2.5C5.5 9 5 11 5 14c0 3.5 2 6 3 8 0 0 1.5-1 2-3 .5-2 2-2 2-2s1.5 0 2 2c.5 2 2 3 2 3 1-2 3-4.5 3-8 0-3-.5-5-1.5-6-1.5-1-3-2.5-5.5-2.5z" />
             <path d="M8 8.5l1.5-1.5 1.5 1.5 1 1-1 1-1.5 1.5-1.5-1.5-1-1z" fill="currentColor" stroke="none" className="text-teal-400" />
@@ -248,7 +258,7 @@ const BookingModal = ({ service, onClose }) => {
         </svg>
     );
 
-    const isDateDisabled = (date) => {
+    const isDateDisabled = (date: Date) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         if (date < today) return true; // Block past dates
@@ -273,7 +283,7 @@ const BookingModal = ({ service, onClose }) => {
         return !dayConfig || !dayConfig.active;
     };
 
-    const handlePhoneChange = (e) => {
+    const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         let value = e.target.value.replace(/\D/g, '');
         if (value.length > 11) value = value.slice(0, 11);
 
@@ -282,7 +292,7 @@ const BookingModal = ({ service, onClose }) => {
         setFormData(prev => ({ ...prev, phone: value }));
     };
 
-    const handleCPFChange = (e) => {
+    const handleCPFChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         let value = e.target.value.replace(/\D/g, '');
         if (value.length > 11) value = value.slice(0, 11);
 
@@ -302,7 +312,7 @@ const BookingModal = ({ service, onClose }) => {
         }
     };
 
-    const checkExistingCustomer = async (cpfDigits) => {
+    const checkExistingCustomer = async (cpfDigits: string) => {
         setCheckingCpf(true);
         try {
             // Unify with users collection
@@ -311,12 +321,14 @@ const BookingModal = ({ service, onClose }) => {
             const q = query(collection(db, "users"), where("cpf", "in", [cpfDigits, formatted]), limit(1));
             const snapshot = await getDocs(q);
             if (!snapshot.empty) {
-                const customer = snapshot.docs[0].data();
+                const customer = snapshot.docs[0].data() as UserProfile;
                 setFormData(prev => ({
                     ...prev,
                     name: customer.name || '',
-                    phone: customer.phone || ''
+                    phone: 'phone' in customer ? (customer as any).phone : '' // Fallback if phone not in UserProfile type but in DB
                 }));
+                // Wait, UserProfile in types.ts doesn't have phone, let's fix type or cast
+                // Actually adding phone to UserProfile type is better, but for now cast to any to be safe or update type
                 setCustomerFound(true);
                 toast.success("Dados preenchidos!");
             } else {
@@ -383,6 +395,8 @@ const BookingModal = ({ service, onClose }) => {
                 }
 
                 // 4. Create Appointment (Critical - Must Succeed)
+                if (!selectedClinic || !selectedService) return;
+
                 await addDoc(collection(db, "appointments"), {
                     clinicId: selectedClinic.id,
                     clinicName: selectedClinic.name,
@@ -390,9 +404,8 @@ const BookingModal = ({ service, onClose }) => {
                     clientName: formData.name,
                     clientPhone: formData.phone,
                     clientCpf: cpfDigits,
-                    serviceName: selectedService.name || selectedService.title,
-                    date: format(selectedDate, 'yyyy-MM-dd'),
-                    time: selectedTime,
+                    serviceName: selectedService.name || selectedService.title || '',
+                    date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : '',
                     time: selectedTime,
                     duration: selectedService.duration || 30, // Save duration!
                     status: 'pending_approval',
@@ -666,7 +679,7 @@ const BookingModal = ({ service, onClose }) => {
                             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-6 animate-bounce-gentle">
                                 <CheckCircle size={40} />
                             </div>
-                            <h3 className="text-2xl font-serif font-bold text-gray-900 mb-2">Solicitação Enviada!</h3>
+                            <h3 className="text-2xl font-serif font-bold text-gray-900 mb-2">Solicitação Envia!</h3>
                             <p className="text-gray-500 max-w-xs mx-auto mb-8">
                                 Recebemos seu pedido de agendamento na unidade <strong>{selectedClinic?.name}</strong>. Em breve entraremos em contato pelo WhatsApp para confirmar.
                             </p>
